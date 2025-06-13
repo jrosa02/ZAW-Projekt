@@ -17,7 +17,7 @@ class LanderData:
     @param: npz_path - path to input .npz file
     '''
     def __init__(self, npz_path : str, dvs_resolution : tuple = (200, 200),  # w zasadzie to ten zbiór danych symuluje DAVIS240, więc rozmiar ramki to powinno być 240x180, ale faktycznie w danych jest 200x200
-                 filter_data : bool = True, filter_t : float = 1 / 24, filter_k : int = 1, filter_size : int = 5):  # Filter params
+                 filter_data : bool = False, filter_t : float = 1 / 24, filter_k : int = 1, filter_size : int = 5):  # Filter params
         self.npz_path = npz_path
         self.img_shape = dvs_resolution
         
@@ -77,6 +77,7 @@ class LanderData:
             print(f"Events: {len(self.events)} entries")
         print(f"Timestamps: {len(self.timestamps)} entries")
         print(f"Trajectory: {len(self.trajectory['position'])} entries")
+        print(f"IMU: {len(self.trajectory['euler_angles'])} entries")
         print(f"Rangemeter: {len(self.rangemeter['time'])} entries")
 
     def plot_rangemeter(self):
