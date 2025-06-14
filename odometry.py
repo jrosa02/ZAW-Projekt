@@ -113,11 +113,6 @@ class VisualOdometry:
         range_idx = self.__rangemeter_idx_by_frame(frame_id)
         range_prev_idx = self.__rangemeter_idx_by_frame(frame_id - 1)
         
-        # print(f"frame_id: {frame_id}")
-        # print(f"imu_idx: {imu_idx}")
-        # print(f"range_idx: {range_idx}")
-        # print(f"range_prev_idx: {range_prev_idx}")
-        
         range_curr = self.__rangemeter["distance"][range_idx]
         range_prev = self.__rangemeter["distance"][range_prev_idx]
         

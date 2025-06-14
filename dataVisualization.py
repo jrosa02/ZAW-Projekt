@@ -79,7 +79,7 @@ class LanderData:
         print(f"Trajectory: {len(self.trajectory['position'])} entries")
         print(f"IMU: {len(self.trajectory['euler_angles'])} entries")
         print(f"Rangemeter: {len(self.rangemeter['time'])} entries")
-
+    
     def plot_rangemeter(self):
         fig, ax = plt.subplots(1, 1)
         ax.plot(self.rangemeter["time"], self.rangemeter["distance"])

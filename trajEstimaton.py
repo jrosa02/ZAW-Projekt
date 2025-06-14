@@ -6,6 +6,33 @@ import numpy as np
 import matplotlib.pyplot as plt
 
 
+def resample_2d_array(a, m):
+    """
+    Resamples a 2D array of shape (n, d) to shape (m, d),
+    where resampling is done along axis 0 (rows).
+    
+    Parameters:
+        a: np.ndarray of shape (n, d)
+        m: int, target number of rows
+        
+    Returns:
+        np.ndarray of shape (m, d)
+    """
+    if a.ndim != 2:
+        raise ValueError("Input array must be 2D (n, d)")
+    
+    n, d = a.shape
+    original_positions = np.linspace(0, 1, n)
+    target_positions = np.linspace(0, 1, m)
+
+    # Interpolujemy każdą kolumnę osobno
+    resampled = np.empty((m, d))
+    for i in range(d):
+        resampled[:, i] = np.interp(target_positions, original_positions, a[:, i])
+    
+    return resampled
+
+
 class TrajEstimator(LanderData):
     '''
     Read and proccess input events from given .npz file
@@ -22,6 +49,14 @@ class TrajEstimator(LanderData):
         cy = self.img_shape[0] // 2 if cy is None else cy
         
         self.__cam = PinholeCamera(self.img_shape[1], self.img_shape[0], fx, fy, cx, cy, k1, k2, p1, p2, k3)
+        
+        self.estimated_trajectory = {
+            "position": np.array([]),
+            "velocity": np.array([])
+        }
+        
+        self.pos_cost = None
+        self.vel_cost = None
         
         
     def process_event_frames(self, t_start=0, t_end=np.inf, tau=0.1, wait=100, frame_type="standard", display=False):
@@ -49,7 +84,7 @@ class TrajEstimator(LanderData):
         temp_x, temp_y, temp_p, temp_ts = [], [], [], []
         start_time = ts[0]
         frame_count = 0
-        estimated_traj = []
+        estimated_pos = []
         for i in range(len(ts)):
             t = ts[i]
             temp_ts.append(ts[i])
@@ -68,9 +103,7 @@ class TrajEstimator(LanderData):
                 vo.update(frame, frame_id=frame_count)
                 
                 if vo.cur_t is not None:
-                    estimated_traj.append(vo.cur_t.copy())  # TODO: reshape to length of trajectory and write to trajectory
-                
-                # TODO: calculate velocity from position
+                    estimated_pos.append(vo.cur_t.copy())
                 
                 # Show frame
                 if display:
@@ -86,16 +119,67 @@ class TrajEstimator(LanderData):
                 start_time = t
                 temp_x, temp_y, temp_p = [], [], []
         
-        plt.plot(np.array(estimated_traj).squeeze())
-        plt.title("Position (x, y, z)")
-        plt.xlabel("Event frame idx")
-        plt.ylabel("Position [m]")
-        plt.legend(["x", "y", "z"])
-        plt.grid()
-        plt.show()
+        # Add start values if it is train data else keep it at 0
+        estimated_pos = np.array(estimated_pos).squeeze()
+        if not np.isnan(self.trajectory["position"][0]).any():
+            estimated_pos += self.trajectory["position"][0]
+            
+        self.estimated_trajectory["position"] = resample_2d_array(estimated_pos, self.trajectory["position"].shape[0])
+        
+        # Velocity estimation - centered
+        # TODO: Chujnia straszna wychodzi - to nie może tak być - jak chcesz zobaczyć, to sobie odkomentuj i odpal maina
+        # estimated_vel = (np.roll(estimated_pos, -1, axis=0) - np.roll(estimated_pos, 1, axis=0)) / (2 * tau)
+        # estimated_vel[0] = (estimated_pos[1] - estimated_pos[0]) / tau         # forward diff
+        # estimated_vel[-1] = (estimated_pos[-1] - estimated_pos[-2]) / tau      # backward diff
+        # self.estimated_trajectory["velocity"] = resample_2d_array(estimated_vel, self.trajectory["velocity"].shape[0])
         
         if display:
             print(f"\nDisplayed {frame_count} event frames.")
             cv2.destroyAllWindows()
             
-    #TODO: method writing result to npz file
+        self.pos_cost = self.pos_cost_fun()
+        self.vel_cost = self.vel_cost_fun()
+            
+        return self.pos_cost  # Docelowo niech zwraca raczej vel_cost albo jakąś ich funkcję obojętnie
+            
+    def pos_cost_fun(self):
+        if self.estimated_trajectory["position"].size == 0:
+            print("Estimated position not calculated!")
+            return None
+        
+        mae = np.mean(np.abs(self.estimated_trajectory["position"] - self.trajectory["position"]))
+        return mae
+    
+    def vel_cost_fun(self):
+        if self.estimated_trajectory["velocity"].size == 0:
+            # print("Estimated velocity not calculated!")
+            return None
+        
+        mae = np.mean(np.abs(self.estimated_trajectory["velocity"] - self.trajectory["velocity"]))
+        return mae
+                    
+    def plot_estimated_trajectory(self):
+        if self.estimated_trajectory["position"].size != 0:
+            # Position
+            plt.plot(self.timestamps, self.estimated_trajectory["position"])
+            plt.title("Estimated Position (x, y, z)")
+            plt.xlabel("Time [s]")
+            plt.ylabel("position [m]")
+            plt.legend(["x", "y", "z"])
+            plt.grid()
+            plt.show()
+        else:
+            print("Estimated position not calculacted!")
+
+        if self.estimated_trajectory["velocity"].size != 0:
+            # Velocity
+            plt.plot(self.timestamps, self.estimated_trajectory["velocity"])
+            plt.title("Estimated Velocity (vx, vy, vz)")
+            plt.xlabel("Time [s]")
+            plt.ylabel("Velocity [m/s]")
+            plt.legend(["vx", "vy", "vz"])
+            plt.grid()
+        # else:
+        #     print("Estimated velocity not calculacted!")
+            
+    #TODO: methods writing result to npz and json file
