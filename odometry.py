@@ -10,7 +10,7 @@ DATASET_DIR = 'data/'
 STAGE_FIRST_FRAME = 0
 STAGE_SECOND_FRAME = 1
 STAGE_DEFAULT_FRAME = 2
-kMinNumFeature = 100
+kMinNumFeature = 1000  # Było 1500, ale tu mamy mały obrazek
 
 class PinholeCamera:
     def __init__(self, width, height, fx, fy, cx, cy, 
@@ -28,7 +28,6 @@ class PinholeCamera:
 lk_params = dict(winSize  = (21, 21), criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01))
 
 def featureTracking(image_ref, image_cur, px_ref):
-
     
     px_cur, status, err = cv2.calcOpticalFlowPyrLK(image_ref, image_cur, px_ref, nextPts=None, winSize=lk_params['winSize'], maxLevel=3, criteria=lk_params['criteria'])
     status = status.ravel()
@@ -70,29 +69,32 @@ class VisualOdometry:
     - `cam`: PinholeCamera - intrisic camera parameters
     - `trajectory`: dict - trajectory dictionary from LanderData
     - `rangemeter`: dict - rangemeter dictionary from LanderData
+    - `n_frames` : int - number of all frames in analizes sequence (number of frames registered during rangemeter and imu work)
     
     Note:
     Number of frames must be bigger or equal to number of `rangemeter` entries in same time period!
     To get best results it should be diviser of this value.
     '''
-    def __init__(self, cam, frames, trajectory, rangemeter):
+    def __init__(self, cam, trajectory, rangemeter, n_frames):
         self.frame_stage = 0
-        self.cam = cam
-        self.new_frame = None
-        self.last_frame = None
         self.cur_R = None
         self.cur_t = None
-        self.px_ref = None
-        self.px_cur = None
-        self.focal = cam.fx
-        self.pp = (cam.cx, cam.cy)
+        
+        self.__cam = cam
+        self.__new_frame = None
+        self.__last_frame = None
+        self.__px_ref = None
+        self.__px_cur = None
+        self.__focal = cam.fx
+        self.__pp = (cam.cx, cam.cy)
 
-        self.detector = cv2.FastFeatureDetector_create(
+        self.__detector = cv2.FastFeatureDetector_create(
             threshold=25, nonmaxSuppression=True)
 
-        self.rangemeter = rangemeter
-        self.trajectory = trajectory
+        self.__rangemeter = rangemeter
+        self.__trajectory = trajectory
         
+        self.__n_frames = n_frames
 
     def getAbsoluteScale(self, frame_id):  # scale from rangemeter and imu angles
         # rangemeter measures alnog local y axis
@@ -100,9 +102,9 @@ class VisualOdometry:
         
         imu_idx = self.__trajectory_idx_by_frame(frame_id)
     
-        phi = self.trajectory["euler_angles"][imu_idx,0]  # roll
-        theta = self.trajectory["euler_angles"][imu_idx,1]  # pitch
-        psi = self.trajectory["euler_angles"][imu_idx,2]  # yaw
+        phi = self.__trajectory["euler_angles"][imu_idx,0]  # roll
+        theta = self.__trajectory["euler_angles"][imu_idx,1]  # pitch
+        psi = self.__trajectory["euler_angles"][imu_idx,2]  # yaw
         
         # to global coordinates
         R = rotation_matrix_from_euler(phi, theta, psi)
@@ -111,8 +113,13 @@ class VisualOdometry:
         range_idx = self.__rangemeter_idx_by_frame(frame_id)
         range_prev_idx = self.__rangemeter_idx_by_frame(frame_id - 1)
         
-        range_curr = self.rangemeter["distance"][range_idx]
-        range_prev = self.rangemeter["distance"][range_prev_idx]
+        # print(f"frame_id: {frame_id}")
+        # print(f"imu_idx: {imu_idx}")
+        # print(f"range_idx: {range_idx}")
+        # print(f"range_prev_idx: {range_prev_idx}")
+        
+        range_curr = self.__rangemeter["distance"][range_idx]
+        range_prev = self.__rangemeter["distance"][range_prev_idx]
         
         delta_r = range_curr - range_prev
         movement_vector = delta_r * range_dir_global
@@ -120,40 +127,40 @@ class VisualOdometry:
         return np.linalg.norm(movement_vector)
 
     def processFirstFrame(self):
-        keypoints = self.detector.detect(self.new_frame)
-        self.px_ref = np.array([kp.pt for kp in keypoints], np.float32)
+        keypoints = self.__detector.detect(self.__new_frame)
+        self.__px_ref = np.array([kp.pt for kp in keypoints], np.float32)
         self.frame_stage = STAGE_SECOND_FRAME
 
     def processSecondFrame(self):
-        keypoints1, keypoints2 = featureTracking(self.last_frame, self.new_frame, self.px_ref)
-        E_mat, _ = cv2.findEssentialMat(points1=keypoints2, points2=keypoints1, method=cv2.RANSAC, prob=0.999, threshold=1.0, pp=self.pp, focal=self.focal)
-        _, self.cur_R, self.cur_t, _ = cv2.recoverPose(E_mat, keypoints2, keypoints1, focal=self.focal, pp=self.pp)
+        keypoints1, keypoints2 = featureTracking(self.__last_frame, self.__new_frame, self.__px_ref)
+        E_mat, _ = cv2.findEssentialMat(points1=keypoints2, points2=keypoints1, method=cv2.RANSAC, prob=0.999, threshold=1.0, pp=self.__pp, focal=self.__focal)
+        _, self.cur_R, self.cur_t, _ = cv2.recoverPose(E_mat, keypoints2, keypoints1, focal=self.__focal, pp=self.__pp)
         self.frame_stage = STAGE_DEFAULT_FRAME
-        self.px_ref = keypoints2
+        self.__px_ref = keypoints2
 
     def processFrame(self, frame_id):
-        keypoints1, keypoints2 = featureTracking(self.last_frame, self.new_frame, self.px_ref)
+        keypoints1, keypoints2 = featureTracking(self.__last_frame, self.__new_frame, self.__px_ref)
         
-        self.px_cur = keypoints2
+        self.__px_cur = keypoints2
         
-        E_mat, _ = cv2.findEssentialMat(points1=keypoints2, points2=keypoints1, method=cv2.RANSAC, prob=0.999, threshold=1.0, pp=self.pp, focal=self.focal)
-        _, R, t, _ = cv2.recoverPose(E_mat, keypoints2, keypoints1, focal=self.focal, pp=self.pp)
+        E_mat, _ = cv2.findEssentialMat(points1=keypoints2, points2=keypoints1, method=cv2.RANSAC, prob=0.999, threshold=1.0, pp=self.__pp, focal=self.__focal)
+        _, R, t, _ = cv2.recoverPose(E_mat, keypoints2, keypoints1, focal=self.__focal, pp=self.__pp)
         scale = self.getAbsoluteScale(frame_id)
         # Aktualizacja R i t
         if scale > 0.1:
             self.cur_t += np.dot(self.cur_R, t) * scale
             self.cur_R = np.dot(R, self.cur_R)
         
-        if len(self.px_ref) < kMinNumFeature:
-            keypoints = self.detector.detect(self.new_frame)
-            self.px_cur = np.array([kp.pt for kp in keypoints], np.float32)
+        if len(self.__px_ref) < kMinNumFeature:
+            keypoints = self.__detector.detect(self.__new_frame)
+            self.__px_cur = np.array([kp.pt for kp in keypoints], np.float32)
             
-        self.px_ref = self.px_cur
+        self.__px_ref = self.__px_cur
 
     def update(self, img, frame_id):
-        assert(img.ndim==2 and img.shape[0]==self.cam.height and img.shape[1]==self.cam.width), "Frame: provided image has not the same size as the camera model or image is not grayscale"
+        assert(img.ndim==2 and img.shape[0]==self.__cam.height and img.shape[1]==self.__cam.width), "Frame: provided image has not the same size as the camera model or image is not grayscale"
 
-        self.new_frame = img
+        self.__new_frame = img
         if self.frame_stage == STAGE_FIRST_FRAME:
             self.processFirstFrame()
         elif self.frame_stage == STAGE_SECOND_FRAME:
@@ -161,25 +168,23 @@ class VisualOdometry:
         elif self.frame_stage == STAGE_DEFAULT_FRAME:
             self.processFrame(frame_id)
             
-        self.last_frame = self.new_frame
+        self.__last_frame = self.__new_frame
         
     def __rangemeter_idx_by_frame(self, frame_id):
         '''
         Assuming equal periods between each frame
         '''
-        rangemeter_entries = len(self.rangemeter)
-        n_frames = len(self.frames)
+        rangemeter_entries = len(self.__rangemeter["distance"])
         
-        return int(np.round(frame_id * (rangemeter_entries / n_frames)))
+        return int(np.round(frame_id * (rangemeter_entries / self.__n_frames)))
         
     def __trajectory_idx_by_frame(self, frame_id):
         '''
         Assuming equal periods between each frame
         '''
-        trajectory_entries = len(self.trajectory)
-        n_frames = len(self.frames)
+        trajectory_entries = len(self.__trajectory["position"])
         
-        return int(np.round(frame_id * (trajectory_entries / n_frames)))
+        return int(np.round(frame_id * (trajectory_entries / self.__n_frames)))
 
 
 

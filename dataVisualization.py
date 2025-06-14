@@ -13,13 +13,13 @@ event_dtype = np.dtype([
 
 class LanderData:
     '''
-    Read and proccess input events from given .npz file
+    Read input events from given .npz file
     @param: npz_path - path to input .npz file
     '''
     def __init__(self, npz_path : str, dvs_resolution : tuple = (200, 200),  # w zasadzie to ten zbiór danych symuluje DAVIS240, więc rozmiar ramki to powinno być 240x180, ale faktycznie w danych jest 200x200
                  filter_data : bool = False, filter_t : float = 1 / 24, filter_k : int = 1, filter_size : int = 5):  # Filter params
         self.npz_path = npz_path
-        self.img_shape = dvs_resolution
+        self.img_shape = (dvs_resolution[1], dvs_resolution[0])  # Swapped
         
         # Filtering parameters
         self.__filter_data = filter_data
@@ -125,7 +125,6 @@ class LanderData:
 
         plt.tight_layout()
         plt.show()
-
     
     def display_event_frames(self, t_start=0, t_end=np.inf, tau=0.1, wait=100, frame_type="standard"):
         """
@@ -158,9 +157,9 @@ class LanderData:
             if t - start_time >= tau:
                 # Generate frame
                 if frame_type == "exponential":
-                    frame = self.__exponantial_decay_aggregation((temp_x, temp_y, temp_p, temp_ts))
+                    frame = self._exponantial_decay_aggregation((temp_x, temp_y, temp_p, temp_ts))
                 else:  # Standard event frame
-                    frame = self.__event_frame_agregation((temp_x, temp_y, temp_p, temp_ts))
+                    frame = self._event_frame_agregation((temp_x, temp_y, temp_p, temp_ts))
        
                 # Show frame
                 frame = cv2.resize(frame, np.multiply(4, frame.shape), interpolation = cv2.INTER_LINEAR)  # Resize, żeby było większe okno?
@@ -178,7 +177,7 @@ class LanderData:
         print(f"\nDisplayed {frame_count} event frames.")
         cv2.destroyAllWindows()
         
-    def __exponantial_decay_aggregation(self, events) -> np.ndarray:
+    def _exponantial_decay_aggregation(self, events) -> np.ndarray:
         '''
         Type of event frame, which consider timestamp of event
         - events: (events_x, events_y, events_polarity, events_ts) 
@@ -205,7 +204,7 @@ class LanderData:
 
         return frame.astype(np.uint8)
 
-    def __event_frame_agregation(self, events) -> np.ndarray:
+    def _event_frame_agregation(self, events) -> np.ndarray:
         ''' 
         Standard event frame 
         @param events - (events_x, events_y, events_polarity, events_ts) 
@@ -217,7 +216,6 @@ class LanderData:
                 frame[y, x] = 255 if p == 1 else 0
 
         return frame
-
 
     def __is_ba(self, event) -> bool:
         '''
