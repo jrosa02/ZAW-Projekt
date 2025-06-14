@@ -97,8 +97,8 @@ class VisualOdometry:
         self.__n_frames = n_frames
 
     def getAbsoluteScale(self, frame_id):  # scale from rangemeter and imu angles
-        # rangemeter measures alnog local y axis
-        range_dir_local = np.array([0, 1, 0])
+        # rangemeter measures alnog local z axis - altitude
+        range_dir_local = np.array([0, 0, 1])
         
         imu_idx = self.__trajectory_idx_by_frame(frame_id)
     

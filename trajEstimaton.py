@@ -127,11 +127,11 @@ class TrajEstimator(LanderData):
         self.estimated_trajectory["position"] = resample_2d_array(estimated_pos, self.trajectory["position"].shape[0])
         
         # Velocity estimation - centered
-        # TODO: Chujnia straszna wychodzi - to nie może tak być - jak chcesz zobaczyć, to sobie odkomentuj i odpal maina
-        # estimated_vel = (np.roll(estimated_pos, -1, axis=0) - np.roll(estimated_pos, 1, axis=0)) / (2 * tau)
-        # estimated_vel[0] = (estimated_pos[1] - estimated_pos[0]) / tau         # forward diff
-        # estimated_vel[-1] = (estimated_pos[-1] - estimated_pos[-2]) / tau      # backward diff
-        # self.estimated_trajectory["velocity"] = resample_2d_array(estimated_vel, self.trajectory["velocity"].shape[0])
+        # TODO: Chujnia straszna wychodzi - to nie może tak być
+        estimated_vel = (np.roll(estimated_pos, -1, axis=0) - np.roll(estimated_pos, 1, axis=0)) / (2 * tau)
+        estimated_vel[0] = (estimated_pos[1] - estimated_pos[0]) / tau         # forward diff
+        estimated_vel[-1] = (estimated_pos[-1] - estimated_pos[-2]) / tau      # backward diff
+        self.estimated_trajectory["velocity"] = resample_2d_array(estimated_vel, self.trajectory["velocity"].shape[0])
         
         if display:
             print(f"\nDisplayed {frame_count} event frames.")
@@ -140,23 +140,27 @@ class TrajEstimator(LanderData):
         self.pos_cost = self.pos_cost_fun()
         self.vel_cost = self.vel_cost_fun()
             
-        return self.pos_cost  # Docelowo niech zwraca raczej vel_cost albo jakąś ich funkcję obojętnie
+        return self.pos_cost  # Docelowo niech zwraca vel_cost, bo to jest metryka, według której oceniają
             
     def pos_cost_fun(self):
         if self.estimated_trajectory["position"].size == 0:
             print("Estimated position not calculated!")
             return None
         
-        mae = np.mean(np.abs(self.estimated_trajectory["position"] - self.trajectory["position"]))
-        return mae
+        mse = np.mean((self.estimated_trajectory["position"] - self.trajectory["position"])**2)
+        return mse
     
     def vel_cost_fun(self):
+        '''
+        Scoring metric - normalized mse
+        '''
         if self.estimated_trajectory["velocity"].size == 0:
-            # print("Estimated velocity not calculated!")
+            print("Estimated velocity not calculated!")
             return None
         
-        mae = np.mean(np.abs(self.estimated_trajectory["velocity"] - self.trajectory["velocity"]))
-        return mae
+        error = np.sqrt(np.sum((self.estimated_trajectory["velocity"] - self.trajectory["velocity"]) ** 2, axis=1)) / (self.trajectory["velocity"].shape[0] * self.trajectory["position"][:,2])
+        
+        return error
                     
     def plot_estimated_trajectory(self):
         if self.estimated_trajectory["position"].size != 0:
@@ -179,7 +183,7 @@ class TrajEstimator(LanderData):
             plt.ylabel("Velocity [m/s]")
             plt.legend(["vx", "vy", "vz"])
             plt.grid()
-        # else:
-        #     print("Estimated velocity not calculacted!")
+        else:
+            print("Estimated velocity not calculacted!")
             
     #TODO: methods writing result to npz and json file
