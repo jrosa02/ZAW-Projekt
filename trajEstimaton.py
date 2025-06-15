@@ -147,19 +147,18 @@ class TrajEstimator(LanderData):
             print("Estimated position not calculated!")
             return None
         
-        mse = np.mean((self.estimated_trajectory["position"] - self.trajectory["position"])**2)
-        return mse
+        error = np.mean((self.estimated_trajectory["position"] - self.trajectory["position"])**2) / self.trajectory["position"].shape[0]
+        return error
     
     def vel_cost_fun(self):
         '''
-        Scoring metric - normalized mse
+        Scoring metric
         '''
         if self.estimated_trajectory["velocity"].size == 0:
             print("Estimated velocity not calculated!")
             return None
         
         error = np.sqrt(np.sum((self.estimated_trajectory["velocity"] - self.trajectory["velocity"]) ** 2, axis=1)) / (self.trajectory["velocity"].shape[0] * self.trajectory["position"][:,2])
-        
         return error
                     
     def plot_estimated_trajectory(self):
