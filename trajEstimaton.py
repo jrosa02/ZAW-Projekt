@@ -2,7 +2,7 @@ import cv2
 from odometry import PinholeCamera, VisualOdometry
 from dataVisualization import LanderData
 import numpy as np
-
+from scipy.signal import butter, filtfilt
 import matplotlib.pyplot as plt
 
 
@@ -41,7 +41,9 @@ class TrajEstimator(LanderData):
     '''
     def __init__(self, npz_path : str, dvs_resolution : tuple = (200, 200),
                  fx=217.2, fy=277, cx=None, cy=None, k1=0, k2=0, p1=0, p2=0, k3=0,  # Camera intrisic parameters
-                 filter_data : bool = False, filter_t : float = 1 / 24, filter_k : int = 1, filter_size : int = 5):  # Filter params
+                 filter_data : bool = False, filter_t : float = 1 / 24, filter_k : int = 1, filter_size : int = 5,  # Filter params
+                 filter_output_pose : bool = False, output_filter_cutoff : float = None  # Lowpass butterworth filter params
+                 ):  
         
         super().__init__(npz_path, dvs_resolution, filter_data, filter_t, filter_k, filter_size)
         
@@ -57,6 +59,9 @@ class TrajEstimator(LanderData):
         
         self.pos_cost = None
         self.vel_cost = None
+        
+        self.__filter_output_pose = filter_output_pose
+        self.__output_filter_cutoff = output_filter_cutoff
         
         
     def process_event_frames(self, t_start=0, t_end=np.inf, tau=0.1, wait=100, frame_type="standard", display=False):
@@ -80,7 +85,7 @@ class TrajEstimator(LanderData):
         n_frames = int((ts[-1] - ts[0]) / tau)
         vo = VisualOdometry(self.__cam, trajectory=self.trajectory, rangemeter=self.rangemeter, n_frames=n_frames)
 
-        # Display frames in time slices of `tau`
+        # Process frames in time slices of `tau`
         temp_x, temp_y, temp_p, temp_ts = [], [], [], []
         start_time = ts[0]
         frame_count = 0
@@ -123,11 +128,18 @@ class TrajEstimator(LanderData):
         estimated_pos = np.array(estimated_pos).squeeze()
         if not np.isnan(self.trajectory["position"][0]).any():
             estimated_pos += self.trajectory["position"][0]
+        
+        if self.__filter_output_pose:
+            fs = 1 / (self.timestamps[-1] / n_frames)  # nyquist freq
+            cutoff = self.__output_filter_cutoff if self.__output_filter_cutoff is not None else ((1 / self.timestamps[-1]) * 6) 
             
+            b, a = butter(N=4, Wn=cutoff, btype='low', fs=fs)
+            estimated_pos = filtfilt(b, a, estimated_pos, axis=0)
+        
         self.estimated_trajectory["position"] = resample_2d_array(estimated_pos, self.trajectory["position"].shape[0])
         
         # Velocity estimation - centered
-        # TODO: Chujnia straszna wychodzi - to nie może tak być
+        # TODO: Chujnia straszna wychodzi - to nie może tak być - dlatego dodałem filtrację dolnoprzepustową- ciągle jest do dupy, trzeba to inaczej liczyć
         estimated_vel = (np.roll(estimated_pos, -1, axis=0) - np.roll(estimated_pos, 1, axis=0)) / (2 * tau)
         estimated_vel[0] = (estimated_pos[1] - estimated_pos[0]) / tau         # forward diff
         estimated_vel[-1] = (estimated_pos[-1] - estimated_pos[-2]) / tau      # backward diff
