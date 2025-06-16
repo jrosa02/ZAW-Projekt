@@ -86,13 +86,13 @@ class TrajEstimator(LanderData):
                 start_time = t
                 temp_x, temp_y, temp_p = [], [], []
         
-        plt.plot(np.array(estimated_traj).squeeze())
-        plt.title("Position (x, y, z)")
-        plt.xlabel("Event frame idx")
-        plt.ylabel("Position [m]")
-        plt.legend(["x", "y", "z"])
-        plt.grid()
-        plt.show()
+        # plt.plot(np.array(estimated_traj).squeeze())
+        # plt.title("Position (x, y, z)")
+        # plt.xlabel("Event frame idx")
+        # plt.ylabel("Position [m]")
+        # plt.legend(["x", "y", "z"])
+        # plt.grid()
+        # plt.show()
         
         if display:
             print(f"\nDisplayed {frame_count} event frames.")
