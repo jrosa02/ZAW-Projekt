@@ -1,16 +1,10 @@
 import numpy as np
 import cv2
-import imutils
-import os
-from os.path import join
-import matplotlib.pyplot as plt
-
-DATASET_DIR = 'data/'
 
 STAGE_FIRST_FRAME = 0
 STAGE_SECOND_FRAME = 1
 STAGE_DEFAULT_FRAME = 2
-kMinNumFeature = 1000  # Było 1500, ale tu mamy mały obrazek
+kMinNumFeature = 300  # Było 1500, ale tu mamy mały obrazek
 
 class PinholeCamera:
     def __init__(self, width, height, fx, fy, cx, cy, 
@@ -80,6 +74,7 @@ class VisualOdometry:
         self.frame_stage = 0
         self.cur_R = None
         self.cur_t = None
+        self.__d_pos = None  # Position change from last frame
         
         self.__cam = cam
         self.__new_frame = None
@@ -129,32 +124,51 @@ class VisualOdometry:
 
     def processFirstFrame(self):
         keypoints = self.__detector.detect(self.__new_frame)
-        self.__px_ref = np.array([kp.pt for kp in keypoints], np.float32)
+        self.__px_ref = np.array([kp.pt for kp in keypoints], np.float32) if keypoints else np.empty((0, 2), dtype=np.float32)
         self.frame_stage = STAGE_SECOND_FRAME
 
     def processSecondFrame(self):
         keypoints1, keypoints2 = featureTracking(self.__last_frame, self.__new_frame, self.__px_ref)
         E_mat, _ = cv2.findEssentialMat(points1=keypoints2, points2=keypoints1, method=cv2.RANSAC, prob=0.999, threshold=1.0, pp=self.__pp, focal=self.__focal)
+        if E_mat is not None and E_mat.shape == (3,3):
+            pass
+        elif E_mat is not None and (E_mat.shape[0] == 3 or E_mat.shape[1] == 3):
+            E_mat = E_mat[:3, :3]  # only first 3x3 matrix
+        else:
+            print(f"Warning: Essetial matrix not found - to few keypoints! Ommitting current frame (frame id: {2})!")
+            self.__px_ref = keypoints2
+            return
+            
         _, self.cur_R, self.cur_t, _ = cv2.recoverPose(E_mat, keypoints2, keypoints1, focal=self.__focal, pp=self.__pp)
+        self.__d_pos = self.cur_t
         self.frame_stage = STAGE_DEFAULT_FRAME
-        self.__px_ref = keypoints2
+        self.__px_ref = keypoints2 if keypoints2.size != 0 else np.empty((0, 2), dtype=np.float32)
 
     def processFrame(self, frame_id):
         keypoints1, keypoints2 = featureTracking(self.__last_frame, self.__new_frame, self.__px_ref)
-        
-        self.__px_cur = keypoints2
+        self.__px_cur = keypoints2 if keypoints2.size != 0 else np.empty((0, 2), dtype=np.float32)
         
         E_mat, _ = cv2.findEssentialMat(points1=keypoints2, points2=keypoints1, method=cv2.RANSAC, prob=0.999, threshold=1.0, pp=self.__pp, focal=self.__focal)
-        _, R, t, _ = cv2.recoverPose(E_mat, keypoints2, keypoints1, focal=self.__focal, pp=self.__pp)
-        scale = self.getAbsoluteScale(frame_id)
-        # Aktualizacja R i t
-        if scale > 0.1:
-            self.cur_t += np.dot(self.cur_R, t) * scale
-            self.cur_R = np.dot(R, self.cur_R)
+        if E_mat is not None and E_mat.shape == (3,3):
+            pass
+        elif E_mat is not None and (E_mat.shape[0] == 3 or E_mat.shape[1] == 3):
+            E_mat = E_mat[:3, :3]  # only first 3x3 matrix
+        else:
+            print(f"Warning: Essetial matrix not found - to few keypoints! Ommitting current frame (frame id: {frame_id})!")
+            self.cur_t += self.__d_pos  # Assuming same motion like in previous frame
+        
+        if E_mat is not None:
+            _, R, t, _ = cv2.recoverPose(E_mat, keypoints2, keypoints1, focal=self.__focal, pp=self.__pp)
+            scale = self.getAbsoluteScale(frame_id)
+            # Aktualizacja R i t
+            if scale > 0.1:
+                self.__d_pos = np.dot(self.cur_R, t) * scale
+                self.cur_t += self.__d_pos
+                self.cur_R = np.dot(R, self.cur_R)
         
         if len(self.__px_ref) < kMinNumFeature:
             keypoints = self.__detector.detect(self.__new_frame)
-            self.__px_cur = np.array([kp.pt for kp in keypoints], np.float32)
+            self.__px_cur = np.array([kp.pt for kp in keypoints], np.float32) if keypoints else np.empty((0, 2), dtype=np.float32)
             
         self.__px_ref = self.__px_cur
 
