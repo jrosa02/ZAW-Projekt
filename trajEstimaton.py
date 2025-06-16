@@ -177,7 +177,7 @@ class TrajEstimator(LanderData):
         
         error = np.mean(
                     np.linalg.norm(self.estimated_trajectory["velocity"] - self.trajectory["velocity"], axis=1)
-                    / self.trajectory["position"][:, 2])
+                    / np.abs(self.trajectory["position"][:, 2]))
         return error
     
     def compare_trajectory(self):

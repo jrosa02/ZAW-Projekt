@@ -4,7 +4,7 @@ import cv2
 STAGE_FIRST_FRAME = 0
 STAGE_SECOND_FRAME = 1
 STAGE_DEFAULT_FRAME = 2
-kMinNumFeature = 300  # Było 1500, ale tu mamy mały obrazek
+kMinNumFeature = 250  # Było 1500, ale tu mamy mały obrazek
 
 class PinholeCamera:
     def __init__(self, width, height, fx, fy, cx, cy, 
@@ -22,6 +22,9 @@ class PinholeCamera:
 lk_params = dict(winSize  = (21, 21), criteria = (cv2.TERM_CRITERIA_EPS | cv2.TERM_CRITERIA_COUNT, 30, 0.01))
 
 def featureTracking(image_ref, image_cur, px_ref):
+    if px_ref is None or px_ref.shape[0] == 0:
+        print("[featureTracking] Warning: px_ref is empty. Skipping optical flow.")
+        return np.empty((0, 2), dtype=np.float32), np.empty((0, 2), dtype=np.float32)
     
     px_cur, status, err = cv2.calcOpticalFlowPyrLK(image_ref, image_cur, px_ref, nextPts=None, winSize=lk_params['winSize'], maxLevel=3, criteria=lk_params['criteria'])
     status = status.ravel()
@@ -54,6 +57,26 @@ def rotation_matrix_from_euler(phi, theta, psi):
     R = R_z @ R_y @ R_x
     return R
 
+
+def safeFindEssentialMat(pts1, pts2, focal, pp):
+    if pts1.shape[0] < 5 or pts2.shape[0] < 5:
+        return None
+    if np.isnan(pts1).any() or np.isnan(pts2).any():
+        return None
+    try:
+        E_mat, _ = cv2.findEssentialMat(points1=pts1, points2=pts2, method=cv2.RANSAC, prob=0.999, threshold=1.0, pp=pp, focal=focal)
+        
+    except cv2.error as e:
+        print("[safeFindEssentialMat] Error in cv2.findEssentialMat!")
+        return None
+    
+    if np.isnan(E_mat).any() or E_mat is None:
+        return None
+    elif E_mat.shape[0] == 3 or E_mat.shape[1] == 3:
+        E_mat = E_mat[:3, :3]  # only first 3x3 matrix
+    
+    return E_mat
+    
 
 class VisualOdometry:
     '''
@@ -102,7 +125,7 @@ class VisualOdometry:
         range_dir_local = np.array([0, 0, 1])
         
         imu_idx = self.__trajectory_idx_by_frame(frame_id)
-    
+        # print(f"frame_id, imu_idx: {frame_id, imu_idx}")
         phi = self.__trajectory["euler_angles"][imu_idx,0]  # roll
         theta = self.__trajectory["euler_angles"][imu_idx,1]  # pitch
         psi = self.__trajectory["euler_angles"][imu_idx,2]  # yaw
@@ -129,13 +152,9 @@ class VisualOdometry:
 
     def processSecondFrame(self):
         keypoints1, keypoints2 = featureTracking(self.__last_frame, self.__new_frame, self.__px_ref)
-        E_mat, _ = cv2.findEssentialMat(points1=keypoints2, points2=keypoints1, method=cv2.RANSAC, prob=0.999, threshold=1.0, pp=self.__pp, focal=self.__focal)
-        if E_mat is not None and E_mat.shape == (3,3):
-            pass
-        elif E_mat is not None and (E_mat.shape[0] == 3 or E_mat.shape[1] == 3):
-            E_mat = E_mat[:3, :3]  # only first 3x3 matrix
-        else:
-            print(f"Warning: Essetial matrix not found - to few keypoints! Ommitting current frame (frame id: {2})!")
+        E_mat = safeFindEssentialMat(keypoints2, keypoints1, self.__focal, self.__pp)
+        if E_mat is None:
+            print(f"[VisualOdometry.processSecondFrame] Warning: Essetial matrix not found - to few keypoints! Ommitting current frame (frame id: {2})!")
             self.__px_ref = keypoints2
             return
             
@@ -148,17 +167,18 @@ class VisualOdometry:
         keypoints1, keypoints2 = featureTracking(self.__last_frame, self.__new_frame, self.__px_ref)
         self.__px_cur = keypoints2 if keypoints2.size != 0 else np.empty((0, 2), dtype=np.float32)
         
-        E_mat, _ = cv2.findEssentialMat(points1=keypoints2, points2=keypoints1, method=cv2.RANSAC, prob=0.999, threshold=1.0, pp=self.__pp, focal=self.__focal)
-        if E_mat is not None and E_mat.shape == (3,3):
-            pass
-        elif E_mat is not None and (E_mat.shape[0] == 3 or E_mat.shape[1] == 3):
-            E_mat = E_mat[:3, :3]  # only first 3x3 matrix
-        else:
-            print(f"Warning: Essetial matrix not found - to few keypoints! Ommitting current frame (frame id: {frame_id})!")
+        E_mat = safeFindEssentialMat(keypoints2, keypoints1, self.__focal, self.__pp)
+        if E_mat is None:
+            print(f"[VisualOdometry.processFrame] Warning: Essetial matrix not found - to few keypoints! Ommitting current frame (frame id: {frame_id})!")
             self.cur_t += self.__d_pos  # Assuming same motion like in previous frame
-        
-        if E_mat is not None:
+        else:
             _, R, t, _ = cv2.recoverPose(E_mat, keypoints2, keypoints1, focal=self.__focal, pp=self.__pp)
+            if np.isnan(t).any():
+                print(f"recoverPose zwrócił NaN w translacji dla frame_id={frame_id}")
+                print(E_mat)
+                print(keypoints2)
+                print(keypoints1)
+
             scale = self.getAbsoluteScale(frame_id)
             # Aktualizacja R i t
             if scale > 0.1:
@@ -180,6 +200,8 @@ class VisualOdometry:
             self.processFirstFrame()
         elif self.frame_stage == STAGE_SECOND_FRAME:
             self.processSecondFrame()
+            if self.cur_t is None:
+                self.cur_t = np.zeros((3,1))
             self.position_trajectory.append(self.cur_t.copy())
         elif self.frame_stage == STAGE_DEFAULT_FRAME:
             self.processFrame(frame_id)
@@ -192,13 +214,13 @@ class VisualOdometry:
         Assuming equal periods between each frame
         '''
         rangemeter_entries = len(self.__rangemeter["distance"])
-        
-        return int(np.round(frame_id * (rangemeter_entries / self.__n_frames)))
+        idx = int(np.round(frame_id * (rangemeter_entries / self.__n_frames)))
+        return idx if idx < rangemeter_entries else (rangemeter_entries - 1)
         
     def __trajectory_idx_by_frame(self, frame_id):
         '''
         Assuming equal periods between each frame
         '''
         trajectory_entries = len(self.__trajectory["position"])
-        
-        return int(np.round(frame_id * (trajectory_entries / self.__n_frames)))
+        idx = int(np.round(frame_id * (trajectory_entries / self.__n_frames)))
+        return idx if idx < trajectory_entries else (trajectory_entries - 1)
