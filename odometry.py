@@ -76,7 +76,7 @@ class VisualOdometry:
     Number of frames must be bigger or equal to number of `rangemeter` entries in same time period!
     To get best results it should be diviser of this value.
     '''
-    def __init__(self, cam, trajectory, rangemeter, n_frames, frame_rate):
+    def __init__(self, cam, trajectory, rangemeter, n_frames, frame_rate, vertical_scaling_factor):
         self.frame_stage = 0
         self.cur_R = None
         self.cur_t = None
@@ -99,6 +99,8 @@ class VisualOdometry:
         
         self.position_trajectory = []
         # self.velocity_trajectory = []  # Może warto to tu liczyć w jakiś sposób
+
+        self.vertical_scaling_factor = vertical_scaling_factor
 
     def getAbsoluteScale(self, frame_id):  # scale from rangemeter and imu angles
         # rangemeter measures alnog local z axis - altitude
@@ -123,7 +125,7 @@ class VisualOdometry:
         delta_r = range_curr - range_prev
         movement_vector = delta_r * range_dir_global
 
-        return np.linalg.norm(movement_vector)
+        return np.linalg.norm(movement_vector)*self.vertical_scaling_factor
 
     def processFirstFrame(self):
         keypoints = self.__detector.detect(self.__new_frame)

@@ -41,9 +41,10 @@ class TrajEstimator(LanderData):
     - `npz_path` : str - path to input .npz file
     '''
     def __init__(self, npz_path : str, dvs_resolution : tuple = (200, 200),
-                 fx=217.2, fy=277, cx=None, cy=None, k1=0, k2=0, p1=0, p2=0, k3=0,  # Camera intrisic parameters
+                 fx=217.2, fy=277.0, cx=None, cy=None, k1=0, k2=0, p1=0, p2=0, k3=0,  # Camera intrisic parameters
                  filter_data : bool = False, filter_t : float = 1 / 24, filter_k : int = 1, filter_size : int = 5,  # Filter params
-                 filter_output_pose : bool = False, output_filter_cutoff : float = None  # Lowpass butterworth filter params
+                 filter_output_pose : bool = False, output_filter_cutoff : float = None, # Lowpass butterworth filter params
+                 vertical_scaling_factor = 1.0
                  ):  
         
         super().__init__(npz_path, dvs_resolution, filter_data, filter_t, filter_k, filter_size)
@@ -64,6 +65,8 @@ class TrajEstimator(LanderData):
         self.__filter_output_pose = filter_output_pose
         self.__output_filter_cutoff = output_filter_cutoff
 
+        self.vertical_scaling_factor = vertical_scaling_factor
+
     def process_event_frames(self, t_start=0, t_end=np.inf, tau=0.1, wait=100, frame_type="standard", display=False):
         """
         Displays event frames between t_start and t_end with temporal resolution `tau`.
@@ -83,7 +86,7 @@ class TrajEstimator(LanderData):
 
         # Create VisualOdometry object for pose estimation
         n_frames = int((ts[-1] - ts[0]) / tau)
-        vo = VisualOdometry(self.__cam, trajectory=self.trajectory, rangemeter=self.rangemeter, n_frames=n_frames, frame_rate=n_frames/self.timestamps[-1])
+        vo = VisualOdometry(self.__cam, trajectory=self.trajectory, rangemeter=self.rangemeter, n_frames=n_frames, frame_rate=n_frames/self.timestamps[-1], vertical_scaling_factor = self.vertical_scaling_factor)
 
         # Process frames in time slices of `tau`
         temp_x, temp_y, temp_p, temp_ts = [], [], [], []
@@ -151,7 +154,7 @@ class TrajEstimator(LanderData):
         self.pos_cost = self.pos_cost_fun()
         self.vel_cost = self.vel_cost_fun()
             
-        return self.pos_cost  # Docelowo niech zwraca vel_cost, bo to jest metryka, według której oceniają
+        return self.vel_cost  # Docelowo niech zwraca vel_cost, bo to jest metryka, według której oceniają
             
     def pos_cost_fun(self):
         if self.estimated_trajectory["position"].size == 0:
