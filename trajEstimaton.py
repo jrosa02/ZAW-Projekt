@@ -171,6 +171,40 @@ class TrajEstimator(LanderData):
         
         error = np.sqrt(np.sum((self.estimated_trajectory["velocity"] - self.trajectory["velocity"]) ** 2, axis=1)) / (self.trajectory["velocity"].shape[0] * self.trajectory["position"][:,2])
         return error
+    
+    def compare_trajectory(self):
+        # Upewnij się, że są dane
+        if self.trajectory["position"].size == 0 or self.estimated_trajectory["position"].size == 0:
+            print("True or estimated position not available!")
+        else:
+            # Wspólne kolory dla x, y, z
+            colors = ['r', 'g', 'b']  # x - red, y - green, z - blue
+            labels = ['x', 'y', 'z']
+            
+            for i in range(3):
+                plt.plot(self.timestamps, self.trajectory["position"][:, i], color=colors[i], label=f'{labels[i]} (true)')
+                plt.plot(self.timestamps, self.estimated_trajectory["position"][:, i], linestyle='--', color=colors[i], label=f'{labels[i]} (est)')
+            
+            plt.title("Trajectory Comparison - Position (x, y, z)")
+            plt.xlabel("Time [s]")
+            plt.ylabel("Position [m]")
+            plt.legend()
+            plt.grid()
+            plt.show()
+
+        if self.trajectory["velocity"].size == 0 or self.estimated_trajectory["velocity"].size == 0:
+            print("True or estimated velocity not available!")
+        else:
+            for i in range(3):
+                plt.plot(self.timestamps, self.trajectory["velocity"][:, i], color=colors[i], label=f'v{labels[i]} (true)')
+                plt.plot(self.timestamps, self.estimated_trajectory["velocity"][:, i], linestyle='--', color=colors[i], label=f'v{labels[i]} (est)')
+            
+            plt.title("Trajectory Comparison - Velocity (vx, vy, vz)")
+            plt.xlabel("Time [s]")
+            plt.ylabel("Velocity [m/s]")
+            plt.legend()
+            plt.grid()
+            plt.show()
                     
     def plot_estimated_trajectory(self):
         if self.estimated_trajectory["position"].size != 0:
