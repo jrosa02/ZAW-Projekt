@@ -31,9 +31,9 @@ class LanderData:
         self._load_data()
 
     def _load_data(self):
-        data = np.load(self.npz_path, allow_pickle=True)
+        self.data = np.load(self.npz_path, allow_pickle=True)
         
-        events_array = data["events"]
+        events_array = self.data["events"]
         events_np = np.array(events_array, dtype=event_dtype)
         if not self.__filter_data:
             self.events = events_np
@@ -57,16 +57,16 @@ class LanderData:
             self.events = np.array(filtered_events, dtype=event_dtype)
 
         
-        self.timestamps = data["timestamps"]
+        self.timestamps = self.data["timestamps"]
         self.trajectory = {
-            "position": data["traj"][:, 0:3],
-            "velocity": data["traj"][:, 3:6],
-            "euler_angles": data["traj"][:, 6:9],
-            "angular_velocity": data["traj"][:, 9:12],
+            "position": self.data["traj"][:, 0:3],
+            "velocity": self.data["traj"][:, 3:6],
+            "euler_angles": self.data["traj"][:, 6:9],
+            "angular_velocity": self.data["traj"][:, 9:12],
         }
         self.rangemeter = {
-            "time": data["range_meter"][:, 0],
-            "distance": data["range_meter"][:, 1],
+            "time": self.data["range_meter"][:, 0],
+            "distance": self.data["range_meter"][:, 1],
         }
 
     def summary(self):
@@ -79,7 +79,7 @@ class LanderData:
         print(f"Trajectory: {len(self.trajectory['position'])} entries")
         print(f"IMU: {len(self.trajectory['euler_angles'])} entries")
         print(f"Rangemeter: {len(self.rangemeter['time'])} entries")
-
+    
     def plot_rangemeter(self):
         fig, ax = plt.subplots(1, 1)
         ax.plot(self.rangemeter["time"], self.rangemeter["distance"])
