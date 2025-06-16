@@ -172,7 +172,12 @@ class TrajEstimator(LanderData):
             print("Estimated velocity not calculated!")
             return None
         
-        error = np.sqrt(np.sum((self.estimated_trajectory["velocity"] - self.trajectory["velocity"]) ** 2, axis=1)) / (self.trajectory["velocity"].shape[0] * self.trajectory["position"][:,2])
+        # Było:
+        # error = np.sqrt(np.sum((self.estimated_trajectory["velocity"] - self.trajectory["velocity"]) ** 2, axis=1)) / (self.trajectory["velocity"].shape[0] * self.trajectory["position"][:,2])
+        
+        error = np.mean(
+                    np.linalg.norm(self.estimated_trajectory["velocity"] - self.trajectory["velocity"], axis=1)
+                    / self.trajectory["position"][:, 2])
         return error
     
     def compare_trajectory(self):
@@ -230,6 +235,7 @@ class TrajEstimator(LanderData):
             plt.ylabel("Velocity [m/s]")
             plt.legend(["vx", "vy", "vz"])
             plt.grid()
+            plt.show()
         else:
             print("Estimated velocity not calculacted!")
             
