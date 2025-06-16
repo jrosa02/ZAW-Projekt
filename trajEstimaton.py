@@ -4,6 +4,7 @@ from dataVisualization import LanderData
 import numpy as np
 from scipy.signal import butter, filtfilt
 import matplotlib.pyplot as plt
+import os
 
 
 def resample_2d_array(a, m):
@@ -62,8 +63,7 @@ class TrajEstimator(LanderData):
         
         self.__filter_output_pose = filter_output_pose
         self.__output_filter_cutoff = output_filter_cutoff
-        
-        
+
     def process_event_frames(self, t_start=0, t_end=np.inf, tau=0.1, wait=100, frame_type="standard", display=False):
         """
         Displays event frames between t_start and t_end with temporal resolution `tau`.
@@ -83,13 +83,12 @@ class TrajEstimator(LanderData):
 
         # Create VisualOdometry object for pose estimation
         n_frames = int((ts[-1] - ts[0]) / tau)
-        vo = VisualOdometry(self.__cam, trajectory=self.trajectory, rangemeter=self.rangemeter, n_frames=n_frames)
+        vo = VisualOdometry(self.__cam, trajectory=self.trajectory, rangemeter=self.rangemeter, n_frames=n_frames, frame_rate=n_frames/self.timestamps[-1])
 
         # Process frames in time slices of `tau`
         temp_x, temp_y, temp_p, temp_ts = [], [], [], []
         start_time = ts[0]
         frame_count = 0
-        estimated_pos = []
         for i in range(len(ts)):
             t = ts[i]
             temp_ts.append(ts[i])
@@ -107,9 +106,6 @@ class TrajEstimator(LanderData):
                 # Process frame
                 vo.update(frame, frame_id=frame_count)
                 
-                if vo.cur_t is not None:
-                    estimated_pos.append(vo.cur_t.copy())
-                
                 # Show frame
                 if display:
                     frame = cv2.resize(frame, np.multiply(4, frame.shape), interpolation = cv2.INTER_LINEAR)
@@ -125,7 +121,7 @@ class TrajEstimator(LanderData):
                 temp_x, temp_y, temp_p = [], [], []
         
         # Add start values if it is train data else keep it at 0
-        estimated_pos = np.array(estimated_pos).squeeze()
+        estimated_pos = np.array(vo.position_trajectory).squeeze()
         if not np.isnan(self.trajectory["position"][0]).any():
             estimated_pos += self.trajectory["position"][0]
         
@@ -143,6 +139,9 @@ class TrajEstimator(LanderData):
         estimated_vel = (np.roll(estimated_pos, -1, axis=0) - np.roll(estimated_pos, 1, axis=0)) / (2 * tau)
         estimated_vel[0] = (estimated_pos[1] - estimated_pos[0]) / tau         # forward diff
         estimated_vel[-1] = (estimated_pos[-1] - estimated_pos[-2]) / tau      # backward diff
+        
+        # estimated_vel = np.array(vo.velocity_trajectory).squeeze()  # jeśli się doda liczenie prędkości w vo
+        
         self.estimated_trajectory["velocity"] = resample_2d_array(estimated_vel, self.trajectory["velocity"].shape[0])
         
         if display:
@@ -197,4 +196,11 @@ class TrajEstimator(LanderData):
         else:
             print("Estimated velocity not calculacted!")
             
-    #TODO: methods writing result to npz and json file
+    def save_result(self, out_path="out"):
+        self.data["traj"][:, 0:3] = self.estimated_trajectory["position"]
+        self.data["traj"][:, 3:6] = self.estimated_trajectory["velocity"]
+        
+        if not os.path.exists(out_path):
+            os.mkdir(out_path)
+        
+        np.savez_compressed(os.path.join(out_path, f"{self.npz_path.split('/')[-1].removeprefix('/')}"), self.data)

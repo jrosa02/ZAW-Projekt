@@ -70,12 +70,13 @@ class VisualOdometry:
     - `trajectory`: dict - trajectory dictionary from LanderData
     - `rangemeter`: dict - rangemeter dictionary from LanderData
     - `n_frames` : int - number of all frames in analizes sequence (number of frames registered during rangemeter and imu work)
+    - `frame_rate`
     
     Note:
     Number of frames must be bigger or equal to number of `rangemeter` entries in same time period!
     To get best results it should be diviser of this value.
     '''
-    def __init__(self, cam, trajectory, rangemeter, n_frames):
+    def __init__(self, cam, trajectory, rangemeter, n_frames, frame_rate):
         self.frame_stage = 0
         self.cur_R = None
         self.cur_t = None
@@ -95,6 +96,9 @@ class VisualOdometry:
         self.__trajectory = trajectory
         
         self.__n_frames = n_frames
+        
+        self.position_trajectory = []
+        # self.velocity_trajectory = []  # Może warto to tu liczyć w jakiś sposób
 
     def getAbsoluteScale(self, frame_id):  # scale from rangemeter and imu angles
         # rangemeter measures alnog local z axis - altitude
@@ -160,8 +164,10 @@ class VisualOdometry:
             self.processFirstFrame()
         elif self.frame_stage == STAGE_SECOND_FRAME:
             self.processSecondFrame()
+            self.position_trajectory.append(self.cur_t.copy())
         elif self.frame_stage == STAGE_DEFAULT_FRAME:
             self.processFrame(frame_id)
+            self.position_trajectory.append(self.cur_t.copy())
             
         self.__last_frame = self.__new_frame
         
@@ -180,6 +186,3 @@ class VisualOdometry:
         trajectory_entries = len(self.__trajectory["position"])
         
         return int(np.round(frame_id * (trajectory_entries / self.__n_frames)))
-
-
-
