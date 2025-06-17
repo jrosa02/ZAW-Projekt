@@ -173,11 +173,6 @@ class VisualOdometry:
             self.cur_t += self.__d_pos  # Assuming same motion like in previous frame
         else:
             _, R, t, _ = cv2.recoverPose(E_mat, keypoints2, keypoints1, focal=self.__focal, pp=self.__pp)
-            if np.isnan(t).any():
-                print(f"recoverPose zwrócił NaN w translacji dla frame_id={frame_id}")
-                print(E_mat)
-                print(keypoints2)
-                print(keypoints1)
 
             scale = self.getAbsoluteScale(frame_id)
             # Aktualizacja R i t

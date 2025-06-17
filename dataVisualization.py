@@ -1,6 +1,7 @@
 import numpy as np
 import matplotlib.pyplot as plt
 import cv2
+from scipy.signal import butter, filtfilt
 
 
 event_dtype = np.dtype([
@@ -17,7 +18,8 @@ class LanderData:
     @param: npz_path - path to input .npz file
     '''
     def __init__(self, npz_path : str, dvs_resolution : tuple = (200, 200),  # w zasadzie to ten zbiór danych symuluje DAVIS240, więc rozmiar ramki to powinno być 240x180, ale faktycznie w danych jest 200x200
-                 filter_data : bool = False, filter_t : float = 1 / 24, filter_k : int = 1, filter_size : int = 5):  # Filter params
+                 filter_data : bool = False, filter_t : float = 1 / 24, filter_k : int = 1, filter_size : int = 5,  # Filter params
+                 filter_rangemeter : bool = True, rangemeter_filter_cutoff : float = None):  # Filtering rangemeter signal
         self.npz_path = npz_path
         self.img_shape = (dvs_resolution[1], dvs_resolution[0])  # Swapped
         
@@ -26,6 +28,9 @@ class LanderData:
         self.filter_t = filter_t if filter_data else None
         self.filter_k = filter_k if filter_data else None
         self.filter_size = filter_size if filter_data else None
+        
+        self.__filter_rangemeter = filter_rangemeter
+        self.__rangemeter_filter_cutoff = rangemeter_filter_cutoff
         
         # Loading data to self.events, self.trajectory, self.timestamps and self.rangemeter
         self._load_data()
@@ -68,6 +73,13 @@ class LanderData:
             "time": self.data["range_meter"][:, 0],
             "distance": self.data["range_meter"][:, 1],
         }
+        
+        if self.__filter_rangemeter:
+            fs = 1 / (self.rangemeter["time"][-1] / len(self.rangemeter["time"]))  # nyquist freq
+            cutoff = self.__rangemeter_filter_cutoff if self.__rangemeter_filter_cutoff is not None else ((1 / self.rangemeter["time"][-1]) * 10) 
+            
+            b, a = butter(N=4, Wn=cutoff, btype='low', fs=fs)
+            self.rangemeter["distance"] = filtfilt(b, a, self.rangemeter["distance"], axis=0)
 
     def summary(self):
         print(f"Loaded LanderData from: {self.npz_path}")

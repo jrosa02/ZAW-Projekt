@@ -44,10 +44,11 @@ class TrajEstimator(LanderData):
                  fx=217.2, fy=277.0, cx=None, cy=None, k1=0, k2=0, p1=0, p2=0, k3=0,  # Camera intrisic parameters
                  filter_data : bool = False, filter_t : float = 1 / 24, filter_k : int = 1, filter_size : int = 5,  # Filter params
                  filter_output_pose : bool = False, output_filter_cutoff : float = None, # Lowpass butterworth filter params
-                 vertical_scaling_factor = 1.0
+                 vertical_scaling_factor = 1.0,
+                 filter_rangemeter : bool = True, rangemeter_filter_cutoff : float = None  # Filtering rangemeter signal
                  ):  
         
-        super().__init__(npz_path, dvs_resolution, filter_data, filter_t, filter_k, filter_size)
+        super().__init__(npz_path, dvs_resolution, filter_data, filter_t, filter_k, filter_size, filter_rangemeter, rangemeter_filter_cutoff)
         
         cx = self.img_shape[1] // 2 if cx is None else cx
         cy = self.img_shape[0] // 2 if cy is None else cy
@@ -171,9 +172,6 @@ class TrajEstimator(LanderData):
         if self.estimated_trajectory["velocity"].size == 0:
             print("Estimated velocity not calculated!")
             return None
-        
-        # Było:
-        # error = np.sqrt(np.sum((self.estimated_trajectory["velocity"] - self.trajectory["velocity"]) ** 2, axis=1)) / (self.trajectory["velocity"].shape[0] * self.trajectory["position"][:,2])
         
         error = np.mean(
                     np.linalg.norm(self.estimated_trajectory["velocity"] - self.trajectory["velocity"], axis=1)
