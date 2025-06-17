@@ -20,7 +20,7 @@ def single_file_cost(args):
     path, parameters = args
     estimator = trajEstimaton.TrajEstimator(
         npz_path=path,
-        fx=3.330e02,
+        fx=parameters[0],
         fy=2.770e02,
         cx=1.533e02,
         cy=1.533e02,
@@ -30,13 +30,14 @@ def single_file_cost(args):
         p2=0,
         k3=0,
         # filter_data=parameters[9],
-        filter_output_pose=False,
+        filter_output_pose=True,
         filter_t=1/24,
         filter_k=1,
         filter_size=5,
-        vertical_scaling_factor=parameters[0]
+        output_filter_cutoff=parameters[1],
+        vertical_scaling_factor=parameters[2]
     )
-    cost = estimator.process_event_frames(tau=parameters[1])
+    cost = estimator.process_event_frames(tau=parameters[3])
     # print(f'cost: {cost}')
     return cost
 
@@ -96,11 +97,12 @@ class fastOptimization():
                 objective,
                 x0=initial_guess,
                 bounds=bounds,
-                method='Powell',
+                method='nelder-mead',
                 callback=callback,
                 options=options
             )
-        except Exception or KeyboardInterrupt:
+
+        except KeyboardInterrupt:
             print("\nOptimization interrupted. Returning best-so-far solution.")
             result = OptimizeResult({
                 'x': best['x'],
@@ -113,7 +115,7 @@ class fastOptimization():
 
 
 if __name__ == "__main__":
-    filepaths = [f"data/train/{i:04}.npz" for i in range(4)] + [f"data/train/{i:04}.npz" for i in range(4, 9)]
+    filepaths = [f"data/train/{i:04}.npz" for i in range(4)]+[f"data/train/{i:04}.npz" for i in range(5, 9)]
     fast_opt = fastOptimization(filepaths)
 
     make_bounds = lambda vals: [
@@ -122,11 +124,14 @@ if __name__ == "__main__":
     ]
     
     with timer("MultiProcess"):
-        initial = [ 2.510e+00,  5.332e-01]
+        initial = [ 1.279e+02,  1.000e-02,  2.510e+00,  5.332e-01]
         bounds = make_bounds(initial)
 
-        bounds[0] = (0.1, 6)
-        bounds[1] = (0.1, 6)
+        bounds[0] = (0, 400)
+        bounds[1] = (0.04, 0.3)
+        bounds[2] = (0.1, 6)
+        bounds[3] = (0.05, 2)
+
         print(fast_opt.optimize_parameters(initial, bounds, max_iter=10))
     
 
