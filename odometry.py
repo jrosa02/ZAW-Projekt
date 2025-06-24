@@ -70,9 +70,11 @@ def safeFindEssentialMat(pts1, pts2, focal, pp):
         print("[safeFindEssentialMat] Error in cv2.findEssentialMat!")
         return None
     
-    if np.isnan(E_mat).any() or E_mat is None:
+    if E_mat is None:
         return None
-    elif E_mat.shape[0] == 3 or E_mat.shape[1] == 3:
+    if np.isnan(E_mat).any():
+        return None
+    if E_mat.shape[0] == 3 or E_mat.shape[1] == 3:
         E_mat = E_mat[:3, :3]  # only first 3x3 matrix
     
     return E_mat

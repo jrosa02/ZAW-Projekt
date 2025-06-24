@@ -42,7 +42,7 @@ class fastOptimization():
         with Pool(num_workers) as pool:
             results: List[np.float64] = pool.map(single_file_cost, args) # type: ignore
             
-        results = np.sum(np.absolute(results))
+        results = np.mean(results)
         return results
 
     def optimize_parameters(self, initial_guess, bounds, max_iter):
